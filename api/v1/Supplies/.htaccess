@@ -1,0 +1,18 @@
+# Habilitar el motor de reescritura
+RewriteEngine On
+
+# Ignorar archivos y directorios existentes
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+
+# Manejar las solicitudes no existentes
+RewriteRule ^(.*)$ $1.php [QSA,L]
+
+# Cabeceras CORS
+Header set Access-Control-Allow-Origin "*"
+Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+Header set Access-Control-Allow-Headers "Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With"
+
+# Si es una solicitud OPTIONS, devolver 200 OK
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ $1 [R=200,L]
