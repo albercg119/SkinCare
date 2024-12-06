@@ -15,46 +15,122 @@ class OrderModel {
 
     public function read($filters = []) {
         try {
-            // Esta consulta base es idéntica a la del método simple
-            $query = "SELECT
+            $query = "SELECT 
                         p.ID_Pedido as id,
                         p.Fecha_Pedido as fecha_pedido,
                         p.Estado_Pedido as estado_pedido,
                         p.ID_Proveedor as id_proveedor,
-                        COALESCE((
-                            SELECT SUM(dp.Cantidad * pr.Precio)
-                            FROM detalle_pedido dp
-                            JOIN producto pr ON dp.ID_Inventario = pr.ID_Producto
-                            WHERE dp.ID_Pedido = p.ID_Pedido
-                        ), 0) as total
-                     FROM " . $this->table . " p
-                     WHERE 1=1";  // Este WHERE 1=1 nos permite agregar filtros de manera limpia
-            
+                        ROUND(COALESCE((
+                            SELECT SUM(Precio_Total)
+                            FROM detalle_pedido
+                            WHERE ID_Pedido = p.ID_Pedido
+                        ), 0), 2) as total
+                    FROM {$this->table} p";
+    
+            $whereConditions = [];
             $params = [];
-            
-            // Los filtros solo se aplican si existen, si no, la consulta queda igual
-            // que la versión simple
+    
             if (!empty($filters['estado'])) {
-                $query .= " AND p.Estado_Pedido = :estado";
+                $whereConditions[] = "p.Estado_Pedido = :estado";
                 $params[':estado'] = $filters['estado'];
             }
-            
+    
             if (!empty($filters['fecha'])) {
-                $query .= " AND DATE(p.Fecha_Pedido) = :fecha";
+                $whereConditions[] = "DATE(p.Fecha_Pedido) = :fecha";
                 $params[':fecha'] = $filters['fecha'];
             }
+    
+            if (!empty($whereConditions)) {
+                $query .= " WHERE " . implode(' AND ', $whereConditions);
+            }
+    
+            $query .= " ORDER BY p.ID_Pedido DESC";
+    
+            error_log("Query a ejecutar: " . $query);
             
             $stmt = $this->conn->prepare($query);
             
-            // Solo vinculamos parámetros si existen filtros
-            foreach ($params as $param => $value) {
-                $stmt->bindValue($param, $value);
+            foreach ($params as $key => $value) {
+                $stmt->bindValue($key, $value);
             }
             
             $stmt->execute();
             return $stmt;
         } catch (PDOException $e) {
             throw new Exception("Error en la consulta: " . $e->getMessage());
+        }
+    }
+    
+    public function update($id, $data) {
+        try {
+            $this->conn->beginTransaction();
+    
+            // Actualizar pedido principal
+            $query = "UPDATE " . $this->table . "
+                    SET Estado_Pedido = :estado_pedido,
+                        ID_Proveedor = :id_proveedor
+                    WHERE ID_Pedido = :id";
+    
+            $stmt = $this->conn->prepare($query);
+            $stmt->bindParam(':estado_pedido', $data['estado_pedido']);
+            $stmt->bindParam(':id_proveedor', $data['id_proveedor']);
+            $stmt->bindParam(':id', $id);
+            $stmt->execute();
+    
+            if (isset($data['productos']) && is_array($data['productos'])) {
+                // Primero eliminamos los detalles existentes
+                $deleteDetalles = "DELETE FROM detalle_pedido WHERE ID_Pedido = :id_pedido";
+                $stmtDelete = $this->conn->prepare($deleteDetalles);
+                $stmtDelete->bindParam(':id_pedido', $id);
+                $stmtDelete->execute();
+    
+                // Preparar la consulta para obtener el precio del producto
+                $queryPrecio = "SELECT p.Precio 
+                               FROM producto p 
+                               JOIN inventario i ON p.ID_Producto = i.ID_Producto 
+                               WHERE i.ID_Inventario = :id_inventario";
+                $stmtPrecio = $this->conn->prepare($queryPrecio);
+    
+                // Insertar los nuevos detalles
+                $queryDetalle = "INSERT INTO detalle_pedido 
+                               (ID_Pedido, ID_Inventario, Cantidad, Precio_Total) 
+                               VALUES 
+                               (:ID_Pedido, :ID_Inventario, :Cantidad, :Precio_Total)";
+                
+                $stmtDetalle = $this->conn->prepare($queryDetalle);
+                
+                foreach ($data['productos'] as $producto) {
+                    // Obtener el precio del producto
+                    $stmtPrecio->bindValue(':id_inventario', $producto['id_inventario']);
+                    $stmtPrecio->execute();
+                    $precioData = $stmtPrecio->fetch(PDO::FETCH_ASSOC);
+                    
+                    if (!$precioData) {
+                        throw new Exception("No se encontró el precio para el producto");
+                    }
+    
+                    $precio_total = $precioData['Precio'] * $producto['cantidad'];
+    
+                    // Insertar el detalle
+                    $stmtDetalle->bindValue(':ID_Pedido', $id);
+                    $stmtDetalle->bindValue(':ID_Inventario', $producto['id_inventario']);
+                    $stmtDetalle->bindValue(':Cantidad', $producto['cantidad']);
+                    $stmtDetalle->bindValue(':Precio_Total', $precio_total);
+                    
+                    if (!$stmtDetalle->execute()) {
+                        throw new Exception("Error al insertar detalle del pedido");
+                    }
+                }
+            }
+    
+            $this->conn->commit();
+            return true;
+    
+        } catch (PDOException $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            throw new Exception("Error al actualizar el pedido: " . $e->getMessage());
         }
     }
 
@@ -208,43 +284,7 @@ class OrderModel {
             }
             throw new Exception($e->getMessage());
         }
-    }
-
-    public function update($id, $data) {
-        try {
-            // First, validate that the order exists
-            $checkQuery = "SELECT ID_Pedido FROM " . $this->table . " WHERE ID_Pedido = :id";
-            $checkStmt = $this->conn->prepare($checkQuery);
-            $checkStmt->bindParam(':id', $id, PDO::PARAM_INT);
-            $checkStmt->execute();
-            
-            if ($checkStmt->rowCount() === 0) {
-                throw new Exception("Pedido no encontrado");
-            }
-    
-            // Update the order
-            $query = "UPDATE " . $this->table . "
-                    SET Estado_Pedido = :estado_pedido
-                    WHERE ID_Pedido = :id";
-    
-            $stmt = $this->conn->prepare($query);
-    
-            // Clean the input data
-            $estado_pedido = htmlspecialchars(strip_tags($data['estado_pedido']));
-    
-            // Bind parameters
-            $stmt->bindParam(':estado_pedido', $estado_pedido);
-            $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-    
-            if ($stmt->execute()) {
-                return true;
-            }
-    
-            throw new Exception("Error al actualizar el pedido");
-        } catch (PDOException $e) {
-            throw new Exception("Error en la base de datos: " . $e->getMessage());
-        }
-    }
+    }    
 
     public function delete($id) {
         try {

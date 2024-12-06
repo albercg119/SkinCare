@@ -1,4 +1,4 @@
-// También asegúrate de que la URL sea correcta
+// Constantes para las rutas de la API
 const API_BASE_URL = '/SkinCare/api/v1/supplies';
 const PRODUCTS_API_URL = '/SkinCare/api/v1/products'; 
 
@@ -64,42 +64,28 @@ async function loadSupplies() {
 
 async function loadArticles() {
     try {
-        console.log('Iniciando carga de artículos...');
-        
         const response = await fetch(`${PRODUCTS_API_URL}/read.php`);
-        console.log('URL de la petición:', `${PRODUCTS_API_URL}/read.php`);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
         const data = await response.json();
-        console.log('Datos recibidos:', data);
-
         const select = document.getElementById('article');
-        if (!select) {
-            throw new Error('No se encontró el elemento select de artículos');
-        }
+        
+        if (!select) throw new Error('No se encontró el elemento select de artículos');
 
-        // Limpiar el select
         select.innerHTML = '<option value="">Seleccione un artículo</option>';
 
         if (data.status !== 'success' || !data.data || !Array.isArray(data.data)) {
             throw new Error('Formato de datos inválido');
         }
 
-        // Agregar las opciones usando id_producto como value
         data.data.forEach(product => {
-            console.log('Procesando producto:', product);
             const option = document.createElement('option');
-            option.value = product.id_producto; // Usar id_producto como value
+            option.value = product.id_producto;
             option.textContent = `${product.nombre} ${product.marca ? `(${product.marca})` : ''}`;
             select.appendChild(option);
         });
-
-        console.log(`${data.data.length} artículos cargados exitosamente`);
     } catch (error) {
-        console.error('Error detallado:', error);
+        console.error('Error:', error);
         const select = document.getElementById('article');
         if (select) {
             select.innerHTML = '<option value="">Error al cargar artículos</option>';
@@ -110,39 +96,32 @@ async function loadArticles() {
 
 // Función para eliminar suministro
 async function deleteSupply(id) {
-    if (!id) {
-        console.error('ID de suministro no proporcionado');
-        return;
-    }
-
     if (!confirm('¿Está seguro de eliminar este suministro?')) return;
 
     try {
         const response = await fetch(`${API_BASE_URL}/delete.php`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({ id: id })
         });
 
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
         const data = await response.json();
         
-        if (!data.status || data.status !== 'success') {
+        if (data.status === 'success') {
+            alert('Suministro eliminado exitosamente');
+            await loadSupplies();
+        } else {
             throw new Error(data.message || 'Error al eliminar el suministro');
         }
-
-        alert('Suministro eliminado exitosamente');
-        await loadSupplies();
     } catch (error) {
         console.error('Error:', error);
         alert('Error al eliminar el suministro: ' + error.message);
     }
 }
 
+// Función para manejar el envío del formulario
 async function handleFormSubmit(event) {
     event.preventDefault();
     
@@ -153,15 +132,18 @@ async function handleFormSubmit(event) {
             quantity: parseInt(document.getElementById('quantity').value)
         };
 
-        const endpoint = supplyId ? 'update.php' : 'create.php';
-        
-        // Aquí está el cambio clave: asegurar que el ID se envíe con el nombre correcto
-        if (supplyId) {
-            formData.supply_id = parseInt(supplyId); // Cambiado de 'id' a 'supply_id' para coincidir
+        if (!formData.article_id) {
+            throw new Error('Debe seleccionar un artículo');
         }
 
-        console.log('Datos a enviar:', formData);
-        console.log('Endpoint:', endpoint);
+        if (!formData.quantity || formData.quantity <= 0) {
+            throw new Error('La cantidad debe ser mayor a 0');
+        }
+
+        const endpoint = supplyId ? 'update.php' : 'create.php';
+        if (supplyId) {
+            formData.supply_id = parseInt(supplyId);
+        }
 
         const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
             method: 'POST',
@@ -173,15 +155,15 @@ async function handleFormSubmit(event) {
 
         const data = await response.json();
         if (data.status === 'success') {
-            alert(endpoint === 'update.php' ? 'Suministro actualizado exitosamente' : 'Suministro creado exitosamente');
-            hideModal();
+            window.hideModal();
             await loadSupplies();
+            alert(supplyId ? 'Suministro actualizado exitosamente' : 'Suministro creado exitosamente');
         } else {
             throw new Error(data.message || 'Error al procesar el suministro');
         }
     } catch (error) {
         console.error('Error:', error);
-        alert('Error al procesar el suministro: ' + error.message);
+        alert('Error: ' + error.message);
     }
 }
 
@@ -192,14 +174,10 @@ async function editSupply(id) {
         
         if (data.status === 'success' && data.data) {
             const supply = data.data;
-            
-            // Aquí también usamos el nombre correcto del campo
-            document.getElementById('supplyId').value = supply.supply_id || supply.id;
+            document.getElementById('supplyId').value = supply.id;
             document.getElementById('article').value = supply.article_id;
             document.getElementById('quantity').value = supply.quantity;
-            
-            console.log('Datos de suministro cargados:', supply);
-            showModal();
+            window.showModal();
         }
     } catch (error) {
         console.error('Error:', error);
@@ -207,67 +185,35 @@ async function editSupply(id) {
     }
 }
 
-// Event Listeners exactamente igual que inventario
-document.addEventListener('DOMContentLoaded', () => {
-    loadSupplies();
-    loadArticles();
-    setupEventListeners();
-});
-
-// Misma estructura que inventario
-function setupEventListeners() {
-    const form = document.getElementById('suppliesForm');
-    if (form) {
-        // Remover listeners anteriores si existen
-        const newForm = form.cloneNode(true);
-        form.parentNode.replaceChild(newForm, form);
-        // Agregar nuevo listener
-        document.getElementById('suppliesForm').addEventListener('submit', handleFormSubmit);
-    }
-
-
-    // Botón Nuevo Suministro
-    const newBtn = document.querySelector('.nuevo-suministro');
-    if (newBtn) {
-        newBtn.addEventListener('click', () => {
-            resetForm();
-            showModal();
-        });
-    }
-
-    // Botón Cancelar
-    const cancelBtn = document.querySelector('.cancelar');
-    if (cancelBtn) cancelBtn.addEventListener('click', hideModal);
-
-    // Click fuera del modal
-    const modal = document.querySelector('#suppliesModal');
-    if (modal) {
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) hideModal();
-        });
-    }
-
-    // Tecla ESC
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') hideModal();
-    });
-}
-
-// Asegurarnos de limpiar el ID al mostrar el modal para nuevo suministro
+// Funciones para el manejo del modal
 window.showModal = function() {
-    const modal = document.querySelector('.modal');
+    const modal = document.querySelector('#suppliesModal');
     if (modal) {
         modal.classList.add('show');
         modal.style.display = 'block';
+
+        const backdrop = document.createElement('div');
+        backdrop.className = 'modal-backdrop fade show';
+        backdrop.style.opacity = '0.1'; // Hacerlo más claro
+        document.body.appendChild(backdrop);
+        document.body.classList.add('modal-open');
     }
 };
 
 window.hideModal = function() {
-    const modal = document.querySelector('.modal');
+    const modal = document.querySelector('#suppliesModal');
     if (modal) {
+        // Ocultar modal
         modal.classList.remove('show');
         modal.style.display = 'none';
-        resetForm();
+        
+         // Remover backdrop
+        const backdrop = document.querySelector('.modal-backdrop');
+        if (backdrop) {
+            backdrop.remove();
+        }
+        document.body.classList.remove('modal-open');
+        window.resetForm();             
     }
 };
 
@@ -275,19 +221,61 @@ function resetForm() {
     const form = document.getElementById('suppliesForm');
     if (form) {
         form.reset();
-        // Asegurar que el ID se limpie
         const idInput = document.getElementById('supplyId');
-        if (idInput) {
-            idInput.value = '';
-        }
+        if (idInput) idInput.value = '';
     }
 }
 
+// Configuración de event listeners
+function setupEventListeners() {
+    // Form submit
+    const form = document.getElementById('suppliesForm');
+    if (form) {
+        const newForm = form.cloneNode(true);
+        form.parentNode.replaceChild(newForm, form);
+        newForm.addEventListener('submit', handleFormSubmit);
+    }
 
+    // Nuevo Suministro
+    const newBtn = document.querySelector('.nuevo-suministro');
+    if (newBtn) {
+        newBtn.addEventListener('click', () => {
+            resetForm();
+            window.showModal();
+        });
+    }
 
+    // Botones de cerrar modal
+    const closeButtons = document.querySelectorAll('.modal .btn-close, .modal .cancelar, .modal .btn-secondary');
+    closeButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            window.hideModal();
+        });
+    });
 
+    // Click fuera del modal
+    const modal = document.querySelector('#suppliesModal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) window.hideModal();
+        });
+    }
 
-// Exponer funciones necesarias globalmente
+    // Tecla ESC
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') window.hideModal();
+    });
+}
+
+// Inicialización
+document.addEventListener('DOMContentLoaded', () => {
+    loadSupplies();
+    loadArticles();
+    setupEventListeners();
+});
+
+// Exponer funciones globalmente
 window.editSupply = editSupply;
 window.deleteSupply = deleteSupply;
 window.showModal = showModal;

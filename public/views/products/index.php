@@ -37,6 +37,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Gestionar Producto</h5>
+                    <button type="button" class="btn-close cancelar" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
     <form id="productForm">

@@ -65,12 +65,16 @@ async function loadProducts() {
     }
 }
 
-// Funciones del modal
 window.showModal = function() {
     const modal = document.querySelector('.modal');
     if (modal) {
         modal.classList.add('show');
         modal.style.display = 'block';
+        // Agregar backdrop
+        const backdrop = document.createElement('div');
+        backdrop.className = 'modal-backdrop fade show';
+        document.body.appendChild(backdrop);
+        document.body.classList.add('modal-open');
     }
 };
 
@@ -79,6 +83,12 @@ window.hideModal = function() {
     if (modal) {
         modal.classList.remove('show');
         modal.style.display = 'none';
+        // Remover backdrop
+        const backdrop = document.querySelector('.modal-backdrop');
+        if (backdrop) {
+            backdrop.remove();
+        }
+        document.body.classList.remove('modal-open');
         window.resetForm();
     }
 };

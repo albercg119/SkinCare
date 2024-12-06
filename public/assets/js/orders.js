@@ -1,6 +1,8 @@
 // Constantes para las rutas de la API
 const API_BASE_URL = '/SkinCare/api/v1/orders';
 
+// Función para cargar pedidos
+// Modificar loadOrders para incluir logging detallado
 async function loadOrders() {
     try {
         console.log('Cargando pedidos...');
@@ -11,7 +13,7 @@ async function loadOrders() {
         }
         
         const data = await response.json();
-        console.log('Datos recibidos:', data);
+        console.log('Datos completos recibidos:', data);
         
         const tableBody = document.getElementById('ordersTableBody');
         if (!tableBody) {
@@ -25,15 +27,24 @@ async function loadOrders() {
                 return;
             }
 
+            console.log('Datos a renderizar:', data.data);
+
             tableBody.innerHTML = '';
             data.data.forEach(order => {
+                // Asegurarnos de que el total sea un número y tenga el formato correcto
+                const total = typeof order.total === 'string' ? 
+                            parseFloat(order.total.replace(/[^0-9.-]+/g, "")) : 
+                            parseFloat(order.total || 0);
+                
+                console.log(`Pedido ${order.id} - Total original:`, order.total, 'Total procesado:', total);
+
                 tableBody.innerHTML += `
                     <tr>
                         <td>${order.id}</td>
                         <td>${order.fecha_pedido}</td>
                         <td>${order.id_proveedor}</td>
                         <td><span class="badge bg-${getStatusBadgeColor(order.estado_pedido)}">${order.estado_pedido}</span></td>
-                        <td>$${parseFloat(order.total || 0).toFixed(2)}</td>
+                        <td>$${total.toFixed(2)}</td>
                         <td>
                             <button class="btn btn-sm btn-info me-2" onclick="showOrderDetails(${order.id})">
                                 <i class="fas fa-eye"></i>
@@ -64,7 +75,56 @@ async function loadOrders() {
             `;
         }
     }
-}        
+}
+
+// Función para renderizar la tabla
+function renderOrdersTable(orders) {
+    const tbody = document.getElementById('ordersTableBody');
+    tbody.innerHTML = '';
+
+    console.log('Orders a renderizar:', orders);
+
+    orders.forEach(order => {
+        // Convertir el total a número y manejar casos nulos o undefined
+        const total = order.total ? Number(order.total) : 0;
+        console.log(`Order ${order.id} total antes de render:`, total);
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${order.id}</td>
+            <td>${order.fecha_pedido}</td>
+            <td>${order.id_proveedor}</td>
+            <td><span class="badge bg-${getStatusBadgeColor(order.estado_pedido)}">${order.estado_pedido}</span></td>
+            <td>$${total.toFixed(2)}</td>
+            <td>
+                <button class="btn btn-sm btn-info me-2" onclick="showOrderDetails(${order.id})">
+                    <i class="fas fa-eye"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-primary me-2" onclick="editOrder(${order.id})">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteOrder(${order.id})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    if (!orders || orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center">No hay pedidos disponibles</td></tr>';
+    }
+}
+
+// Función auxiliar para obtener el color del badge según el estado
+function getStatusBadgeColor(status) {
+    const colors = {
+        'pendiente': 'warning',
+        'enviado': 'info',
+        'entregado': 'success'
+    };
+    return colors[status] || 'secondary';
+}  
 
 // Función para cargar proveedores
 async function loadSuppliers() {
@@ -88,17 +148,22 @@ async function loadSuppliers() {
 async function editOrder(id) {
     console.log('Iniciando edición del pedido:', id);
     try {
+        // Obtener datos básicos del pedido
         const response = await fetch(`${API_BASE_URL}/read_single.php?id=${id}`);
         const data = await response.json();
+        
+        // Obtener detalles de los productos del pedido
+        const detailsResponse = await fetch(`${API_BASE_URL}/details.php?id=${id}`);
+        const detailsData = await detailsResponse.json();
         
         if (data.status === 'success' && data.data) {
             const order = data.data;
             
-            // Establecer explícitamente el ID en el campo oculto
+            // Establecer el ID en el campo oculto
             const orderIdInput = document.getElementById('orderId');
             if (orderIdInput) {
                 orderIdInput.value = id;
-                console.log('ID establecido en el formulario:', id); // Debug
+                console.log('ID establecido en el formulario:', id);
             } else {
                 console.error('Campo orderId no encontrado');
             }
@@ -106,6 +171,42 @@ async function editOrder(id) {
             // Establecer los demás valores
             document.getElementById('proveedor').value = order.id_proveedor;
             document.getElementById('estado').value = order.estado_pedido;
+            
+            // Limpiar la lista de productos existente
+            const productosLista = document.getElementById('productos-lista');
+            productosLista.innerHTML = '';
+            
+            // Cargar todos los productos disponibles y añadir los del pedido
+            const productsResponse = await fetch('/SkinCare/api/v1/products/read.php');
+            const productsData = await productsResponse.json();
+            
+            if (detailsData.status === 'success' && detailsData.data.detalles) {
+                for (const detalle of detailsData.data.detalles) {
+                    const selectProducto = document.createElement('select');
+                    selectProducto.className = 'form-select mb-2';
+                    
+                    // Poblar el select con todos los productos
+                    productsData.data.forEach(producto => {
+                        const option = document.createElement('option');
+                        option.value = producto.id_inventario;
+                        option.textContent = `${producto.nombre} - Stock: ${producto.cantidad_stock}`;
+                        option.selected = producto.id_inventario === detalle.id_inventario;
+                        selectProducto.appendChild(option);
+                    });
+                    
+                    const inputCantidad = document.createElement('input');
+                    inputCantidad.type = 'number';
+                    inputCantidad.className = 'form-control mb-2';
+                    inputCantidad.value = detalle.cantidad;
+                    
+                    const productoDiv = document.createElement('div');
+                    productoDiv.className = 'producto-item mb-3';
+                    productoDiv.appendChild(selectProducto);
+                    productoDiv.appendChild(inputCantidad);
+                    
+                    productosLista.appendChild(productoDiv);
+                }
+            }
             
             // Mostrar el modal
             window.showOrderModal();
@@ -147,52 +248,7 @@ async function deleteOrder(id) {
 
 
 
-async function handleFormSubmit(event) {
-    event.preventDefault();
-    
-    try {
-        // Obtener el ID y validarlo explícitamente
-        const orderIdInput = document.getElementById('orderId');
-        const orderId = orderIdInput ? orderIdInput.value : null;
-        
-        console.log('ID del pedido en el formulario:', orderId); // Debug
-        
-        if (!orderId) {
-            throw new Error('No se encontró el ID del pedido');
-        }
-        
-        const formData = {
-            id: parseInt(orderId), // Asegurarnos de que sea un número
-            estado_pedido: document.getElementById('estado').value.trim(),
-            id_proveedor: document.getElementById('proveedor').value
-        };
 
-        console.log('Datos a enviar:', formData); // Debug
-        
-        const response = await fetch(`${API_BASE_URL}/update.php`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(formData)
-        });
-
-        const data = await response.json();
-        console.log('Respuesta del servidor:', data); // Debug
-        
-        if (data.status === 'success') {
-            orderIdInput.value = ''; // Limpiar el ID
-            window.hideOrderModal();
-            await loadOrders();
-            alert('Pedido actualizado exitosamente');
-        } else {
-            throw new Error(data.message || 'Error al actualizar el pedido');
-        }
-    } catch (error) {
-        console.error('Error en el formulario:', error);
-        alert(error.message);
-    }
-}
 
 // Aseguramos que el botón de editar tenga el evento correcto
 document.querySelectorAll('.edit-order-btn').forEach(btn => {
@@ -267,29 +323,47 @@ function showOrderDetails(id) {
         .catch(error => console.error('Error:', error));
 }
 
-// Funciones de utilidad
-function renderOrdersTable(orders) {
-    const tbody = document.getElementById('ordersTableBody');
-    tbody.innerHTML = '';
 
-    orders.forEach(order => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${order.id}</td>
-            <td>${order.fecha_pedido}</td>
-            <td>${order.id_proveedor}</td>
-            <td><span class="badge bg-${getStatusBadgeColor(order.estado_pedido)}">${order.estado_pedido}</span></td>
-            <td>
-                <button class="btn btn-sm btn-primary" onclick="editOrder(${order.id})">
-                    <i class="fas fa-edit"></i>
-                </button>
-                <button class="btn btn-sm btn-danger" onclick="deleteOrder(${order.id})">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
+
+// También necesitamos actualizar la función filterOrders para usar la misma estructura
+async function filterOrders() {
+    try {
+        const estado = document.getElementById('filterStatus').value;
+        const fecha = document.getElementById('filterDate').value;
+        
+        console.log('Aplicando filtros:', { estado, fecha });
+        
+        let url = `${API_BASE_URL}/read.php`;
+        const params = new URLSearchParams();
+        
+        if (estado) params.append('estado', estado);
+        if (fecha) params.append('fecha', fecha);
+        
+        if (params.toString()) {
+            url += '?' + params.toString();
+        }
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            renderOrdersTable(data.data); // Ahora usará la función actualizada
+        } else {
+            throw new Error(data.message || 'Error al filtrar pedidos');
+        }
+    } catch (error) {
+        console.error('Error al filtrar:', error);
+        const tbody = document.getElementById('ordersTableBody');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center text-danger">
+                        Error al filtrar pedidos: ${error.message}
+                    </td>
+                </tr>
+            `;
+        }
+    }
 }
 
 function populateSupplierSelect(suppliers) {
@@ -300,14 +374,7 @@ function populateSupplierSelect(suppliers) {
     });
 }
 
-function getStatusBadgeColor(status) {
-    const colors = {
-        'pendiente': 'warning',
-        'enviado': 'info',
-        'entregado': 'success'
-    };
-    return colors[status] || 'secondary';
-}
+
 
 function showCreateOrderModal() {
     document.getElementById('orderForm').reset();
@@ -316,6 +383,32 @@ function showCreateOrderModal() {
     orderModal.show();
 }
 
+// 1. Modificar el evento para nuevo pedido
+document.addEventListener('DOMContentLoaded', () => {
+    const nuevoPedidoBtn = document.querySelector('[data-bs-target="#orderModal"]');
+    if (nuevoPedidoBtn) {
+        nuevoPedidoBtn.addEventListener('click', () => {
+            // Limpiar el formulario completamente
+            const form = document.getElementById('orderForm');
+            form.reset();
+            
+            // Asegurarse de que el ID esté vacío
+            document.getElementById('orderId').value = '';
+            
+            // Limpiar la lista de productos
+            document.getElementById('productos-lista').innerHTML = '';
+            
+            // Cambiar el título del modal
+            document.querySelector('.modal-title').textContent = 'Nuevo Pedido';
+            
+            // Mostrar el modal
+            const modal = new bootstrap.Modal(document.getElementById('orderModal'));
+            modal.show();
+        });
+    }
+});
+
+// Modificar las funciones del modal para usar el mismo enfoque que en productos
 window.showOrderModal = function() {
     const modal = document.querySelector('#orderModal');
     if (modal) {
@@ -349,82 +442,143 @@ window.hideOrderModal = function() {
         document.body.style.paddingRight = '';
     }
 };
-function setupFormListener() {
-    const form = document.getElementById('orderForm');
-    if (form) {
-        form.addEventListener('submit', handleFormSubmit);
-    }
-}
 
 function setupModalListeners() {
-    const cancelarBtn = document.querySelector('.modal .cancelar, .modal .btn-secondary');
-    if (cancelarBtn) {
-        cancelarBtn.addEventListener('click', (e) => {
+    // Botón Cancelar
+    const cancelarBtns = document.querySelectorAll('.modal .btn-secondary, .modal .cancelar');
+    cancelarBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
             e.preventDefault();
             window.hideOrderModal();
         });
-    }
-}
+    });
 
-async function filterOrders() {
-    try {
-        const estado = document.getElementById('filterStatus').value;
-        const fecha = document.getElementById('filterDate').value;
-        
-        console.log('Aplicando filtros:', { estado, fecha });
-        
-        // Construir URL con parámetros solo si tienen valor
-        let url = `${API_BASE_URL}/read.php`;
-        const params = new URLSearchParams();
-        
-        if (estado) params.append('estado', estado);
-        if (fecha) params.append('fecha', fecha);
-        
-        if (params.toString()) {
-            url += '?' + params.toString();
-        }
-        
-        const response = await fetch(url);
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-            renderOrdersTable(data.data);
-        } else {
-            throw new Error(data.message || 'Error al filtrar pedidos');
-        }
-    } catch (error) {
-        console.error('Error al filtrar:', error);
-        alert('Error al filtrar pedidos: ' + error.message);
-    }
-}
+    // Botón de cerrar (X)
+    const closeBtns = document.querySelectorAll('.modal .btn-close');
+    closeBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            window.hideOrderModal();
+        });
+    });
 
-
-document.addEventListener('DOMContentLoaded', () => {
-    // Asignar eventos
-    const nuevoPedidoBtn = document.querySelector('.nuevo-pedido');
-    if (nuevoPedidoBtn) {
-        nuevoPedidoBtn.addEventListener('click', () => {
-            document.getElementById('orderForm').reset();
-            document.getElementById('orderId').value = '';
-            document.querySelector('.modal-title').textContent = 'Nuevo Pedido';
-            window.showOrderModal();
+    // Click fuera del modal
+    const modal = document.querySelector('#orderModal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                window.hideOrderModal();
+            }
         });
     }
 
-    const cancelarBtn = document.querySelector('.cancelar');
-    if (cancelarBtn) {
-        cancelarBtn.addEventListener('click', () => window.hideOrderModal());
-    }
+    // Tecla ESC
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            window.hideOrderModal();
+        }
+    });
+}
 
-    const orderForm = document.querySelector('#orderForm');
-    if (orderForm) {
-        orderForm.addEventListener('submit', handleFormSubmit);
-    }
 
-    // Cargar datos iniciales
+async function handleFormSubmit(event) {
+    event.preventDefault();
+    
+    try {
+        // Validar que haya un proveedor seleccionado
+        const proveedorValue = document.getElementById('proveedor').value;
+        if (!proveedorValue) {
+            throw new Error('Debe seleccionar un proveedor');
+        }
+
+        // Recopilar productos y validar
+        const productoItems = document.querySelectorAll('.producto-item');
+        const productos = Array.from(productoItems).map(item => {
+            const selectProducto = item.querySelector('select');
+            const inputCantidad = item.querySelector('input[type="number"]');
+            
+            if (!selectProducto || !inputCantidad || !inputCantidad.value) {
+                throw new Error('Todos los productos deben tener una cantidad especificada');
+            }
+
+            return {
+                id_inventario: parseInt(selectProducto.value),
+                cantidad: parseInt(inputCantidad.value)
+            };
+        });
+
+        if (productos.length === 0) {
+            throw new Error('Debe agregar al menos un producto');
+        }
+
+        const formData = {
+            id_proveedor: parseInt(proveedorValue),
+            estado_pedido: document.getElementById('estado').value,
+            productos: productos
+        };
+
+        const orderIdInput = document.getElementById('orderId');
+        const isUpdate = orderIdInput && orderIdInput.value !== '';
+        
+        if (isUpdate) {
+            formData.id = parseInt(orderIdInput.value);
+        }
+
+        const url = isUpdate ? 
+            `${API_BASE_URL}/update.php` : 
+            `${API_BASE_URL}/create.php`;
+
+        console.log('Enviando datos:', JSON.stringify(formData));
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+
+        const result = await response.json();
+        console.log('Respuesta:', result);
+        
+        if (result.status === 'success') {
+            // Cerrar el modal primero
+            window.hideOrderModal();
+            
+            // Esperar un momento antes de recargar
+            setTimeout(async () => {
+                await loadOrders();
+                alert(isUpdate ? 'Pedido actualizado exitosamente' : 'Pedido creado exitosamente');
+            }, 100);
+        } else {
+            throw new Error(result.message || 'Error en la operación');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error: ' + error.message);
+    }
+}
+
+// 3. Asegurarse de que los event listeners estén correctamente asignados
+function setupFormListeners() {
+    const form = document.getElementById('orderForm');
+    if (form) {
+        // Remover listeners anteriores para evitar duplicados
+        const newForm = form.cloneNode(true);
+        form.parentNode.replaceChild(newForm, form);
+        
+        newForm.addEventListener('submit', handleFormSubmit);
+    }
+}
+
+// 4. Llamar a setupFormListeners cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', () => {
+    setupFormListeners();
+    setupModalListeners(); 
     loadOrders();
-    loadSuppliers();    
+    loadSuppliers();
 });
+
 
 
 // Exponer funciones necesarias globalmente

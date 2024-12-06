@@ -1,3 +1,5 @@
+// suppliers.js
+
 // Constantes para las rutas de la API
 const API_BASE_URL = '/SkinCare/api/v1/suppliers';
 
@@ -64,129 +66,48 @@ async function loadSuppliers() {
 }
 
 // Funciones del modal
-window.showModal = function() {
-    const modal = document.querySelector('.modal');
-    if (modal) {
-        modal.classList.add('show');
-        modal.style.display = 'block';
-    }
-};
+function showModal() {
+    const modal = new bootstrap.Modal(document.getElementById('supplierModal'));
+    modal.show();
+}
 
-window.hideModal = function() {
-    const modal = document.querySelector('.modal');
+function hideModal() {
+    const modal = bootstrap.Modal.getInstance(document.getElementById('supplierModal'));
     if (modal) {
-        modal.classList.remove('show');
-        modal.style.display = 'none';
-        window.resetForm();
+        modal.hide();
+        resetForm();
     }
-};
+}
 
-window.resetForm = function() {
+function resetForm() {
     const form = document.getElementById('supplierForm');
     if (form) {
         form.reset();
-        const supplierIdInput = document.getElementById('supplierId');
-        if (supplierIdInput) {
-            supplierIdInput.value = '';
-        }
-    }
-};
-
-// Event Listeners
-document.addEventListener('DOMContentLoaded', () => {
-    loadSuppliers();
-    setupFormListener();
-    setupModalListeners();
-});
-
-// Configurar listeners del modal
-function setupModalListeners() {
-    // Botón Cancelar
-    const cancelarBtn = document.querySelector('.modal .cancelar, .modal .btn-secondary');
-    if (cancelarBtn) {
-        cancelarBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            window.hideModal();
-        });
-    }
-
-    // Botón Nuevo Proveedor
-    const newSupplierBtn = document.querySelector('.nuevo-proveedor');
-    if (newSupplierBtn) {
-        newSupplierBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            window.resetForm();
-            window.showModal();
-        });
-    }
-
-    // Click fuera del modal
-    const modal = document.querySelector('.modal');
-    if (modal) {
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                window.hideModal();
-            }
-        });
-    }
-
-    // Tecla ESC
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            window.hideModal();
-        }
-    });
-}
-
-// Configurar listener del formulario
-function setupFormListener() {
-    const form = document.getElementById('supplierForm');
-    if (form) {
-        form.addEventListener('submit', handleFormSubmit);
+        document.getElementById('supplierId').value = '';
     }
 }
 
+// Función para editar proveedor
 async function editSupplier(id) {
     try {
         console.log('Iniciando edición del proveedor:', id);
         
         const response = await fetch(`${API_BASE_URL}/read_single.php?id=${id}`);
-        console.log('Respuesta del servidor:', response);
-
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            throw new Error('La respuesta del servidor no es JSON válido');
-        }
-
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        const responseText = await response.text();
-        console.log('Respuesta texto:', responseText);
-        
-        let data;
-        try {
-            data = JSON.parse(responseText);
-        } catch (e) {
-            console.error('Error al parsear JSON:', e);
-            throw new Error('Error al procesar la respuesta del servidor');
-        }
+        const data = await response.json();
         
         if (data.status === 'success' && data.data) {
             const supplier = data.data;
-            console.log('Datos del proveedor:', supplier);
             
-            if (!supplier.id || !supplier.nombre || !supplier.telefono || !supplier.correo_electronico) {
-                throw new Error('Datos del proveedor incompletos');
-            }
-
             document.getElementById('supplierId').value = supplier.id;
             document.getElementById('nombre').value = supplier.nombre;
             document.getElementById('telefono').value = supplier.telefono;
             document.getElementById('correo').value = supplier.correo_electronico;
             
-            window.showModal();
+            showModal();
         } else {
             throw new Error(data.message || 'Error al cargar el proveedor');
         }
@@ -197,47 +118,52 @@ async function editSupplier(id) {
 }
 
 async function deleteSupplier(id) {
-    if (!id || isNaN(id)) {
-        alert('ID de proveedor no válido');
+    if (!id) {
+        console.error('ID de proveedor no proporcionado');
         return;
     }
 
-    if (!confirm('¿Está seguro de eliminar este proveedor?')) {
-        return;
-    }
+    if (!confirm('¿Está seguro de eliminar este proveedor?')) return;
 
     try {
+        console.log('Iniciando eliminación del proveedor:', id);
+        
         const response = await fetch(`${API_BASE_URL}/delete.php`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ id: parseInt(id) })
+            body: JSON.stringify({ id: id })
         });
 
-        const text = await response.text();
-        const cleanedText = text.replace(/^\uFEFF/, '').trim();
+        // Obtenemos y limpiamos la respuesta
+        const responseText = await response.text();
+        console.log('Respuesta bruta del servidor:', responseText);
         
-        let data;
-        try {
-            data = JSON.parse(cleanedText);
-        } catch (e) {
-            console.error('Texto de respuesta:', cleanedText);
-            throw new Error('Error al procesar la respuesta del servidor');
-        }
-        
+        // Limpiamos cualquier contenido extra que pueda haber
+        const cleanedResponse = responseText.replace(/^[^{]*/, '').replace(/[^}]*$/, '');
+        console.log('Respuesta limpia:', cleanedResponse);
+
+        // Intentamos parsear la respuesta limpia
+        const data = JSON.parse(cleanedResponse);
+
         if (data.status === 'success') {
-            alert('Proveedor eliminado exitosamente');
+            // Primero actualizamos la lista
             await loadSuppliers();
+            // Luego mostramos el mensaje
+            alert('Proveedor eliminado exitosamente');
         } else {
             throw new Error(data.message || 'Error al eliminar el proveedor');
         }
     } catch (error) {
-        console.error('Error al eliminar:', error);
+        console.error('Error detallado:', error);
+        // Intentamos actualizar la lista de todos modos
+        await loadSuppliers();
         alert('Error al eliminar el proveedor: ' + error.message);
     }
 }
 
+// Función para manejar el envío del formulario
 async function handleFormSubmit(event) {
     event.preventDefault();
     
@@ -248,12 +174,14 @@ async function handleFormSubmit(event) {
             correo_electronico: document.getElementById('correo').value.trim()
         };
 
+        // Validación básica
         if (!formData.nombre || !formData.telefono || !formData.correo_electronico) {
             throw new Error('Por favor, complete todos los campos correctamente');
         }
 
-        const supplierId = document.getElementById('supplierId')?.value;
+        const supplierId = document.getElementById('supplierId').value;
         
+        // Determinar si es creación o actualización
         let url = `${API_BASE_URL}/create.php`;
         let method = 'POST';
         
@@ -271,12 +199,15 @@ async function handleFormSubmit(event) {
             body: JSON.stringify(formData)
         });
 
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
         
         const data = await response.json();
+        
         if (data.status === 'success') {
             alert(supplierId ? 'Proveedor actualizado exitosamente' : 'Proveedor creado exitosamente');
-            window.hideModal();
+            hideModal();
             await loadSuppliers();
         } else {
             throw new Error(data.message || 'Error al procesar el proveedor');
@@ -287,7 +218,54 @@ async function handleFormSubmit(event) {
     }
 }
 
-// Asegurar que las funciones necesarias estén en el objeto window
+// Configuración de eventos cuando el DOM está cargado
+document.addEventListener('DOMContentLoaded', () => {
+    // Cargar proveedores inicialmente
+    loadSuppliers();
+    
+    // Configurar el formulario
+    const form = document.getElementById('supplierForm');
+    if (form) {
+        form.addEventListener('submit', handleFormSubmit);
+    }
+    
+    // Configurar el botón de nuevo proveedor
+    const newSupplierBtn = document.querySelector('.nuevo-proveedor');
+    if (newSupplierBtn) {
+        newSupplierBtn.addEventListener('click', () => {
+            resetForm();
+            showModal();
+        });
+    }
+    
+    // Configurar botones de cancelar
+    const cancelButtons = document.querySelectorAll('.cancelar');
+    cancelButtons.forEach(button => {
+        button.addEventListener('click', hideModal);
+    });
+    
+    // Configurar cierre del modal al hacer clic fuera
+    const modal = document.getElementById('supplierModal');
+    if (modal) {
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                hideModal();
+            }
+        });
+    }
+    
+    // Configurar cierre del modal con tecla ESC
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            hideModal();
+        }
+    });
+});
+
+// Exponer funciones necesarias globalmente
 window.editSupplier = editSupplier;
 window.deleteSupplier = deleteSupplier;
+window.showModal = showModal;
+window.hideModal = hideModal;
+window.resetForm = resetForm;
 window.handleFormSubmit = handleFormSubmit;

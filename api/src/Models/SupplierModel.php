@@ -30,7 +30,8 @@ class SupplierModel {
         }
     }
 
-    public function readOne() {
+     // Método para obtener un proveedor específico
+     public function readOne() {
         try {
             $query = "SELECT 
                         ID_Proveedor as id, 
@@ -59,6 +60,7 @@ class SupplierModel {
         }
     }
 
+    // Método para crear un nuevo proveedor
     public function create() {
         try {
             $query = "INSERT INTO " . $this->table . "
@@ -66,6 +68,11 @@ class SupplierModel {
                     VALUES (?, ?, ?)";
 
             $stmt = $this->conn->prepare($query);
+
+            // Sanitización básica de datos
+            $this->nombre = htmlspecialchars(strip_tags($this->nombre));
+            $this->telefono = htmlspecialchars(strip_tags($this->telefono));
+            $this->correo_electronico = htmlspecialchars(strip_tags($this->correo_electronico));
 
             $stmt->bindParam(1, $this->nombre);
             $stmt->bindParam(2, $this->telefono);
@@ -80,6 +87,7 @@ class SupplierModel {
         }
     }
 
+    // Método para actualizar un proveedor existente
     public function update() {
         try {
             $query = "UPDATE " . $this->table . "
@@ -90,6 +98,11 @@ class SupplierModel {
                     WHERE ID_Proveedor = ?";
 
             $stmt = $this->conn->prepare($query);
+
+            // Sanitización básica de datos
+            $this->nombre = htmlspecialchars(strip_tags($this->nombre));
+            $this->telefono = htmlspecialchars(strip_tags($this->telefono));
+            $this->correo_electronico = htmlspecialchars(strip_tags($this->correo_electronico));
 
             $stmt->bindParam(1, $this->nombre);
             $stmt->bindParam(2, $this->telefono);
@@ -105,19 +118,28 @@ class SupplierModel {
         }
     }
 
+    // Método para eliminar un proveedor
     public function delete() {
         try {
-            $query = "DELETE FROM " . $this->table . " WHERE ID_Proveedor = ?";
+            $this->conn->beginTransaction();
             
+            $query = "DELETE FROM " . $this->table . " WHERE ID_Proveedor = ?";
             $stmt = $this->conn->prepare($query);
             $stmt->bindParam(1, $this->id);
 
             if($stmt->execute()) {
+                $this->conn->commit();
                 return true;
             }
+            
+            $this->conn->rollBack();
             return false;
         } catch (PDOException $e) {
-            throw new Exception("Error al eliminar: " . $e->getMessage());
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log("Error en delete(): " . $e->getMessage());
+            throw new Exception("Error al eliminar el proveedor: " . $e->getMessage());
         }
     }
 }
