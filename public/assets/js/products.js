@@ -259,6 +259,18 @@ async function handleFormSubmit(event) {
             ubicacion: document.getElementById('ubicacion').value.trim()
         };
 
+        // Validaciones del lado del cliente
+        const errors = [];
+        if (formData.nombre.length < 3) errors.push("El nombre debe tener al menos 3 caracteres");
+        if (formData.marca.length < 3) errors.push("La marca debe tener al menos 3 caracteres");
+        if (formData.precio <= 0) errors.push("El precio debe ser mayor que 0");
+        if (formData.cantidad_stock < 0) errors.push("El stock no puede ser negativo");
+
+        if (errors.length > 0) {
+            alert(errors.join('\n'));
+            return;
+        }
+
         // Si hay ID, añadirlo al formData y usar update.php
         if (productId) {
             formData.id = productId;

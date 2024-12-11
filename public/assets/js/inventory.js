@@ -139,26 +139,58 @@ async function deleteInventory(id) {
     }
 }
 
-// Manejar envío del formulario
 async function handleFormSubmit(event) {
     event.preventDefault();
     
     try {
+        // Obtenemos el ID del inventario y los valores del formulario
         const inventoryId = document.getElementById('inventoryId').value;
+        const productoValue = document.getElementById('producto').value;
+        const ubicacionValue = document.getElementById('ubicacion').value.trim();
+
+        // Creamos un array para almacenar los errores de validación
+        const errors = [];
+
+        // Validación del producto
+        if (!productoValue) {
+            errors.push('Debe seleccionar un producto válido');
+        } else if (isNaN(parseInt(productoValue))) {
+            errors.push('El ID del producto debe ser un número válido');
+        }
+
+        // Validación de la ubicación
+        if (!ubicacionValue) {
+            errors.push('Debe especificar una ubicación');
+        } else if (ubicacionValue.length < 3) {
+            errors.push('La ubicación debe tener al menos 3 caracteres');
+        } else if (ubicacionValue.length > 50) {
+            errors.push('La ubicación no puede exceder los 50 caracteres');
+        }
+
+        // Si hay errores, los mostramos y detenemos la ejecución
+        if (errors.length > 0) {
+            alert(errors.join('\n'));
+            return;
+        }
+
+        // Preparamos los datos del formulario
         const formData = {
-            id_producto: document.getElementById('producto').value,
-            ubicacion_tienda: document.getElementById('ubicacion').value
+            id_producto: productoValue,
+            ubicacion_tienda: ubicacionValue
         };
 
+        // Determinamos si es una actualización o creación
         const endpoint = inventoryId ? 'update.php' : 'create.php';
         if (inventoryId) formData.id_inventario = inventoryId;
 
+        // Realizamos la petición al servidor
         const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
         });
 
+        // Procesamos la respuesta
         const data = await response.json();
         if (data.status === 'success') {
             alert(inventoryId ? 'Registro actualizado exitosamente' : 'Registro creado exitosamente');

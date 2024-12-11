@@ -163,7 +163,6 @@ async function deleteSupplier(id) {
     }
 }
 
-// Función para manejar el envío del formulario
 async function handleFormSubmit(event) {
     event.preventDefault();
     
@@ -174,14 +173,47 @@ async function handleFormSubmit(event) {
             correo_electronico: document.getElementById('correo').value.trim()
         };
 
-        // Validación básica
-        if (!formData.nombre || !formData.telefono || !formData.correo_electronico) {
-            throw new Error('Por favor, complete todos los campos correctamente');
+        // Creamos un array para almacenar todos los errores de validación
+        const errors = [];
+
+        // Validación del nombre
+        if (!formData.nombre) {
+            errors.push('El nombre es requerido');
+        } else if (formData.nombre.length < 3) {
+            errors.push('El nombre debe tener al menos 3 caracteres');
+        } else if (formData.nombre.length > 100) {
+            errors.push('El nombre no puede exceder los 100 caracteres');
+        } else if (!/^[A-Za-zÁáÉéÍíÓóÚúÑñ\s]+$/.test(formData.nombre)) {
+            errors.push('El nombre solo debe contener letras y espacios');
+        }
+
+        // Validación del teléfono
+        if (!formData.telefono) {
+            errors.push('El teléfono es requerido');
+        } else if (!/^\d{10}$/.test(formData.telefono)) {
+            errors.push('El teléfono debe contener exactamente 10 dígitos');
+        }
+
+        // Validación del correo electrónico
+        if (!formData.correo_electronico) {
+            errors.push('El correo electrónico es requerido');
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.correo_electronico)) {
+            errors.push('El formato del correo electrónico no es válido');
+        } else if (formData.correo_electronico.length > 100) {
+            errors.push('El correo electrónico no puede exceder los 100 caracteres');
+        }
+
+        console.log('Errores encontrados:', errors); // Log para debug
+
+        // Modificamos esta parte para asegurar que se detenga la ejecución
+        if (errors.length > 0) {
+            alert(errors.join('\n'));
+            throw new Error('Errores de validación');
         }
 
         const supplierId = document.getElementById('supplierId').value;
         
-        // Determinar si es creación o actualización
+        // El resto del código se mantiene igual
         let url = `${API_BASE_URL}/create.php`;
         let method = 'POST';
         
@@ -210,7 +242,12 @@ async function handleFormSubmit(event) {
             hideModal();
             await loadSuppliers();
         } else {
-            throw new Error(data.message || 'Error al procesar el proveedor');
+            // Mejoramos el manejo de errores del servidor
+            if (data.errors && Array.isArray(data.errors)) {
+                alert(data.errors.join('\n'));
+            } else {
+                throw new Error(data.message || 'Error al procesar el proveedor');
+            }
         }
     } catch (error) {
         console.error('Error:', error);

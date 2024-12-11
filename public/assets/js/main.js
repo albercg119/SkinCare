@@ -110,6 +110,8 @@ const ordersFunctions = {
     }
 };
 
+
+
 // Eventos DOM
 document.addEventListener('DOMContentLoaded', function() {
     // Inicializar tooltips de Bootstrap

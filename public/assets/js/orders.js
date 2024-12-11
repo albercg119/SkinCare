@@ -482,41 +482,61 @@ function setupModalListeners() {
 
 
 async function handleFormSubmit(event) {
+    // Prevenir el comportamiento predeterminado del formulario
     event.preventDefault();
     
     try {
-        // Validar que haya un proveedor seleccionado
+        // Obtener y validar el proveedor
         const proveedorValue = document.getElementById('proveedor').value;
         if (!proveedorValue) {
             throw new Error('Debe seleccionar un proveedor');
         }
 
-        // Recopilar productos y validar
+        // Recopilar y validar los productos del pedido
         const productoItems = document.querySelectorAll('.producto-item');
-        const productos = Array.from(productoItems).map(item => {
+        
+        // Verificar que haya al menos un producto
+        if (productoItems.length === 0) {
+            throw new Error('Debe agregar al menos un producto');
+        }
+
+        // Mapear y validar cada producto
+        const productos = Array.from(productoItems).map((item, index) => {
             const selectProducto = item.querySelector('select');
             const inputCantidad = item.querySelector('input[type="number"]');
             
-            if (!selectProducto || !inputCantidad || !inputCantidad.value) {
-                throw new Error('Todos los productos deben tener una cantidad especificada');
+            // Validaciones específicas para cada producto
+            if (!selectProducto || !selectProducto.value) {
+                throw new Error(`Debe seleccionar el producto #${index + 1}`);
+            }
+
+            if (!inputCantidad || !inputCantidad.value) {
+                throw new Error(`Debe especificar la cantidad para el producto #${index + 1}`);
+            }
+
+            const cantidad = parseInt(inputCantidad.value);
+            if (isNaN(cantidad) || cantidad <= 0) {
+                throw new Error(`La cantidad del producto #${index + 1} debe ser mayor a 0`);
+            }
+
+            if (cantidad > 99999) {
+                throw new Error(`La cantidad del producto #${index + 1} no puede exceder 99,999 unidades`);
             }
 
             return {
                 id_inventario: parseInt(selectProducto.value),
-                cantidad: parseInt(inputCantidad.value)
+                cantidad: cantidad
             };
         });
 
-        if (productos.length === 0) {
-            throw new Error('Debe agregar al menos un producto');
-        }
-
+        // Construir el objeto de datos a enviar
         const formData = {
             id_proveedor: parseInt(proveedorValue),
-            estado_pedido: document.getElementById('estado').value,
+            estado_pedido: document.getElementById('estado').value, // Usar el valor directo sin modificar
             productos: productos
         };
 
+        // Determinar si es una actualización o creación nueva
         const orderIdInput = document.getElementById('orderId');
         const isUpdate = orderIdInput && orderIdInput.value !== '';
         
@@ -524,12 +544,15 @@ async function handleFormSubmit(event) {
             formData.id = parseInt(orderIdInput.value);
         }
 
+        // Construir la URL correspondiente
         const url = isUpdate ? 
             `${API_BASE_URL}/update.php` : 
             `${API_BASE_URL}/create.php`;
 
+        // Log para depuración
         console.log('Enviando datos:', JSON.stringify(formData));
 
+        // Realizar la petición al servidor
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -538,26 +561,31 @@ async function handleFormSubmit(event) {
             body: JSON.stringify(formData)
         });
 
+        // Procesar la respuesta
         const result = await response.json();
-        console.log('Respuesta:', result);
+        console.log('Respuesta del servidor:', result);
         
+        // Manejar el resultado exitoso
         if (result.status === 'success') {
-            // Cerrar el modal primero
+            // Cerrar el modal y actualizar la lista
             window.hideOrderModal();
             
-            // Esperar un momento antes de recargar
+            // Pequeño retardo para asegurar que el modal se cierre correctamente
             setTimeout(async () => {
                 await loadOrders();
                 alert(isUpdate ? 'Pedido actualizado exitosamente' : 'Pedido creado exitosamente');
             }, 100);
         } else {
+            // Manejar errores del servidor
             throw new Error(result.message || 'Error en la operación');
         }
     } catch (error) {
+        // Manejar cualquier error que ocurra durante el proceso
         console.error('Error:', error);
         alert('Error: ' + error.message);
     }
 }
+
 
 // 3. Asegurarse de que los event listeners estén correctamente asignados
 function setupFormListeners() {

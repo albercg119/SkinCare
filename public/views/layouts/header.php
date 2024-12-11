@@ -42,6 +42,11 @@
                         <li class="nav-item">
                             <a class="nav-link" href="/SkinCare/public/supplies"><i class="fas fa-boxes"></i> Suministros</a>
                         </li>
+                        <li class="nav-item">
+    <a class="btn btn-outline-danger ms-2" href="/SkinCare/public/logout">
+        <i class="fas fa-sign-out-alt"></i> Cerrar sesión
+    </a>
+</li>
                     </ul>
                 </div>
             </div>

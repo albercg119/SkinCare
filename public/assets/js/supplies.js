@@ -132,14 +132,34 @@ async function handleFormSubmit(event) {
             quantity: parseInt(document.getElementById('quantity').value)
         };
 
+        // Creamos un array para almacenar todos los errores de validación
+        const errors = [];
+
+        // Validación del artículo
         if (!formData.article_id) {
-            throw new Error('Debe seleccionar un artículo');
+            errors.push('Debe seleccionar un artículo');
         }
 
-        if (!formData.quantity || formData.quantity <= 0) {
-            throw new Error('La cantidad debe ser mayor a 0');
+        // Validación de cantidad con reglas más específicas
+        if (!formData.quantity) {
+            errors.push('La cantidad es requerida');
+        } else if (isNaN(formData.quantity)) {
+            errors.push('La cantidad debe ser un número válido');
+        } else if (formData.quantity <= 0) {
+            errors.push('La cantidad debe ser mayor a 0');
+        } else if (formData.quantity > 99999) {
+            errors.push('La cantidad no puede exceder 99,999 unidades');
+        } else if (!Number.isInteger(formData.quantity)) {
+            errors.push('La cantidad debe ser un número entero');
         }
 
+        // Si hay errores, los mostramos y detenemos el proceso
+        if (errors.length > 0) {
+            alert(errors.join('\n'));
+            return;
+        }
+
+        // Si hay ID, lo agregamos al formData
         const endpoint = supplyId ? 'update.php' : 'create.php';
         if (supplyId) {
             formData.supply_id = parseInt(supplyId);
@@ -159,7 +179,12 @@ async function handleFormSubmit(event) {
             await loadSupplies();
             alert(supplyId ? 'Suministro actualizado exitosamente' : 'Suministro creado exitosamente');
         } else {
-            throw new Error(data.message || 'Error al procesar el suministro');
+            // Mejoramos el manejo de errores del servidor
+            if (data.errors && Array.isArray(data.errors)) {
+                alert(data.errors.join('\n'));
+            } else {
+                throw new Error(data.message || 'Error al procesar el suministro');
+            }
         }
     } catch (error) {
         console.error('Error:', error);
